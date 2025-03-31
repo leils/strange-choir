@@ -35,12 +35,12 @@ export async function POST(request: Request) {
           { status: 500 }
         );
       }
-    }
-    
+    } 
     // Handle text-to-speech request (JSON)
-    if (contentType.includes('application/json')) {
+    else if (contentType.includes('application/json')) {
       try {
-        const { text } = await request.json();
+        const requestData = await request.json();
+        const text = requestData.text;
         
         if (!text) {
           return NextResponse.json(
@@ -49,13 +49,27 @@ export async function POST(request: Request) {
           );
         }
 
+        console.log('Generating speech for text:', text);
+        
         const response = await openai.audio.speech.create({
           model: 'tts-1',
           voice: 'alloy',
           input: text,
         });
 
+        console.log('Speech generation successful, creating audio blob');
+        
         const audioBlob = await response.blob();
+        
+        if (audioBlob.size === 0) {
+          console.error('Empty audio blob received');
+          return NextResponse.json(
+            { error: 'Generated empty audio' },
+            { status: 500 }
+          );
+        }
+        
+        console.log('Returning audio blob, size:', audioBlob.size);
         
         return new NextResponse(audioBlob, {
           headers: {
@@ -70,11 +84,14 @@ export async function POST(request: Request) {
         );
       }
     }
-
-    return NextResponse.json(
-      { error: 'Invalid content type' },
-      { status: 400 }
-    );
+    // Invalid content type
+    else {
+      console.error('Invalid content type:', contentType);
+      return NextResponse.json(
+        { error: `Invalid content type: ${contentType}` },
+        { status: 400 }
+      );
+    }
   } catch (error: any) {
     console.error('Speech API error:', error);
     return NextResponse.json(
