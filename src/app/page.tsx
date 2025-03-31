@@ -96,7 +96,7 @@ export default function Home() {
   const speakText = async (text: string) => {
     try {
       console.log('Sending text to speech API:', text);
-      
+
       const response = await fetch('/api/speech', {
         method: 'POST',
         headers: {
@@ -113,9 +113,8 @@ export default function Home() {
 
       const contentType = response.headers.get('Content-Type');
       console.log('Response content type:', contentType);
-      
-      if (!contentType || !contentType.includes('audio')) {
-        // If we didn't get audio back, try to read the error message
+
+      if (!contentType || !contentType.includes('audio/mpeg')) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Invalid response format:', errorData);
         throw new Error(errorData.error || 'Response was not audio format');
@@ -123,7 +122,6 @@ export default function Home() {
 
       const audioBlob = await response.blob();
 
-      // Error handling for invalid blob
       if (audioBlob.size === 0) {
         console.error('Empty audio blob received');
         throw new Error('Empty audio received from API');
@@ -133,7 +131,6 @@ export default function Home() {
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
-      // Handle audio playback errors
       audio.onerror = (e) => {
         console.error('Error playing audio:', e);
       };
