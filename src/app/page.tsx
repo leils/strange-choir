@@ -23,9 +23,13 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [continuousListening, setContinuousListening] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -37,7 +41,35 @@ export default function Home() {
 
   const startRecording = async () => {
     try {
+      // If we already have a stream in continuous mode, just start a new recording
+      if (continuousListening && streamRef.current) {
+        const mediaRecorder = new MediaRecorder(streamRef.current);
+        mediaRecorderRef.current = mediaRecorder;
+        chunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          chunksRef.current.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          await transcribeAudio(audioBlob);
+          
+          // In continuous mode, restart recording after transcription (unless speaking)
+          if (continuousListening && !isSpeaking) {
+            setTimeout(() => startRecording(), 100);
+          }
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        return;
+      }
+
+      // Initial setup - get the stream
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -49,7 +81,15 @@ export default function Home() {
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
         await transcribeAudio(audioBlob);
-        stream.getTracks().forEach((track) => track.stop());
+        
+        // In continuous mode, restart recording after transcription (unless speaking)
+        if (continuousListening && !isSpeaking) {
+          setTimeout(() => startRecording(), 100);
+        } else if (!continuousListening) {
+          // Clean up stream if not in continuous mode
+          stream.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
       };
 
       mediaRecorder.start();
@@ -63,6 +103,17 @@ export default function Home() {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+    }
+  };
+
+  const stopMicrophone = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
   };
 
@@ -97,6 +148,12 @@ export default function Home() {
     try {
       console.log('Sending text to speech API:', text);
 
+      // Stop recording while AI is speaking
+      if (isRecording) {
+        stopRecording();
+      }
+      setIsSpeaking(true);
+
       const response = await fetch('/api/speech', {
         method: 'POST',
         headers: {
@@ -130,14 +187,33 @@ export default function Home() {
       console.log('Audio blob received, size:', audioBlob.size);
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
+      audioRef.current = audio;
 
       audio.onerror = (e) => {
         console.error('Error playing audio:', e);
+        setIsSpeaking(false);
+        // Resume recording if in continuous mode
+        if (continuousListening) {
+          setTimeout(() => startRecording(), 100);
+        }
       };
 
-      audio.play();
+      audio.onended = () => {
+        setIsSpeaking(false);
+        // Resume recording after AI finishes speaking
+        if (continuousListening) {
+          setTimeout(() => startRecording(), 100);
+        }
+      };
+
+      await audio.play();
     } catch (error: any) {
       console.error('Error generating speech:', error);
+      setIsSpeaking(false);
+      // Resume recording if in continuous mode even on error
+      if (continuousListening) {
+        setTimeout(() => startRecording(), 100);
+      }
       alert(error.message || 'Failed to generate speech');
     }
   };
@@ -187,17 +263,28 @@ export default function Home() {
           id: `assistant-${Date.now()}`,
         },
       ]);
+
+      // Auto-speak the response in continuous listening mode
+      if (continuousListening) {
+        await speakText(assistantMessage.content);
+      }
     } catch (error) {
       console.error('Error getting completion:', error);
+      const errorMsg = 'Sorry, I encountered an error. Please try again.';
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'Sorry, I encountered an error. Please try again.',
+          content: errorMsg,
           timestamp: Date.now(),
           id: `error-${Date.now()}`,
         },
       ]);
+      
+      // Also speak error message in continuous mode
+      if (continuousListening) {
+        await speakText(errorMsg);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -209,8 +296,43 @@ export default function Home() {
         <div className="bg-white rounded-xl shadow-xl overflow-hidden">
           <div className="h-[700px] flex flex-col">
             <div className="p-4 bg-blue-50 border-b border-blue-200">
-              <h1 className="text-2xl font-semibold text-gray-800">AI Poet Chat</h1>
-              <p className="text-sm text-gray-600">Chat with Whomp, the French AI poet</p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h1 className="text-2xl font-semibold text-gray-800">AI Poet Chat</h1>
+                  <p className="text-sm text-gray-600">Chat with Whomp, the French AI poet</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <span className="text-sm text-gray-700">Continuous Listen</span>
+                    <button
+                      onClick={() => {
+                        const newValue = !continuousListening;
+                        setContinuousListening(newValue);
+                        if (newValue) {
+                          startRecording();
+                        } else {
+                          stopMicrophone();
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        continuousListening ? 'bg-blue-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          continuousListening ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </label>
+                  {isSpeaking && (
+                    <span className="text-xs text-blue-600 flex items-center space-x-1">
+                      <Volume2 size={14} className="animate-pulse" />
+                      <span>Speaking...</span>
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -299,10 +421,11 @@ export default function Home() {
                   onClick={isRecording ? stopRecording : startRecording}
                   className={`p-3 rounded-lg transition-colors ${
                     isRecording
-                      ? 'bg-red-500 hover:bg-red-600 text-white'
+                      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                   }`}
-                  disabled={isLoading}
+                  disabled={isLoading || continuousListening}
+                  title={continuousListening ? 'Mic is auto-managed in continuous mode' : 'Push to talk'}
                 >
                   {isRecording ? <Square size={20} /> : <Mic size={20} />}
                 </button>
