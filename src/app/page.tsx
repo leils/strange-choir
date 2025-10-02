@@ -25,11 +25,13 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [continuousListening, setContinuousListening] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -38,6 +40,113 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          console.log('Speech recognition started');
+          setIsListening(true);
+        };
+
+        recognition.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+
+          // Show live transcription in input box
+          if (interimTranscript) {
+            setInput(interimTranscript);
+          }
+
+          // When we get a final result (after silence), auto-submit
+          if (finalTranscript && continuousListening) {
+            const fullText = finalTranscript.trim();
+            if (fullText) {
+              setInput(fullText);
+              // Auto-submit after a brief delay
+              setTimeout(() => {
+                submitMessage(fullText);
+              }, 500);
+            }
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          if (event.error === 'no-speech') {
+            // Restart if no speech detected
+            if (continuousListening && !isSpeaking) {
+              setTimeout(() => {
+                try {
+                  recognition.start();
+                } catch (e) {
+                  console.log('Recognition already started');
+                }
+              }, 100);
+            }
+          }
+        };
+
+        recognition.onend = () => {
+          console.log('Speech recognition ended');
+          setIsListening(false);
+          // Auto-restart if in continuous mode and not speaking
+          if (continuousListening && !isSpeaking) {
+            setTimeout(() => {
+              try {
+                recognition.start();
+              } catch (e) {
+                console.log('Recognition already started');
+              }
+            }, 100);
+          }
+        };
+
+        recognitionRef.current = recognition;
+      } else {
+        console.error('Speech Recognition not supported in this browser');
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [continuousListening, isSpeaking]);
+
+  const startSpeechRecognition = () => {
+    if (recognitionRef.current && !isListening) {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.log('Recognition already started');
+      }
+    }
+  };
+
+  const stopSpeechRecognition = () => {
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -148,7 +257,11 @@ export default function Home() {
     try {
       console.log('Sending text to speech API:', text);
 
-      // Stop recording while AI is speaking
+      // Stop speech recognition while AI is speaking
+      if (isListening) {
+        stopSpeechRecognition();
+      }
+      // Also stop recording if using mic button
       if (isRecording) {
         stopRecording();
       }
@@ -192,17 +305,17 @@ export default function Home() {
       audio.onerror = (e) => {
         console.error('Error playing audio:', e);
         setIsSpeaking(false);
-        // Resume recording if in continuous mode
+        // Resume speech recognition if in continuous mode
         if (continuousListening) {
-          setTimeout(() => startRecording(), 100);
+          setTimeout(() => startSpeechRecognition(), 100);
         }
       };
 
       audio.onended = () => {
         setIsSpeaking(false);
-        // Resume recording after AI finishes speaking
+        // Resume speech recognition after AI finishes speaking
         if (continuousListening) {
-          setTimeout(() => startRecording(), 100);
+          setTimeout(() => startSpeechRecognition(), 500);
         }
       };
 
@@ -210,21 +323,20 @@ export default function Home() {
     } catch (error: any) {
       console.error('Error generating speech:', error);
       setIsSpeaking(false);
-      // Resume recording if in continuous mode even on error
+      // Resume speech recognition if in continuous mode even on error
       if (continuousListening) {
-        setTimeout(() => startRecording(), 100);
+        setTimeout(() => startSpeechRecognition(), 100);
       }
       alert(error.message || 'Failed to generate speech');
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const submitMessage = async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
     const userMessage: Message = {
       role: 'user',
-      content: input.trim(),
+      content: text.trim(),
       timestamp: Date.now(),
       id: `user-${Date.now()}`,
       isFloating: true,
@@ -290,6 +402,11 @@ export default function Home() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitMessage(input);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-100 to-blue-200">
       <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -309,9 +426,10 @@ export default function Home() {
                         const newValue = !continuousListening;
                         setContinuousListening(newValue);
                         if (newValue) {
-                          startRecording();
+                          startSpeechRecognition();
                         } else {
-                          stopMicrophone();
+                          stopSpeechRecognition();
+                          setInput('');
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
@@ -325,6 +443,12 @@ export default function Home() {
                       />
                     </button>
                   </label>
+                  {isListening && !isSpeaking && (
+                    <span className="text-xs text-green-600 flex items-center space-x-1">
+                      <Mic size={14} className="animate-pulse" />
+                      <span>Listening...</span>
+                    </span>
+                  )}
                   {isSpeaking && (
                     <span className="text-xs text-blue-600 flex items-center space-x-1">
                       <Volume2 size={14} className="animate-pulse" />
@@ -412,9 +536,12 @@ export default function Home() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type your message..."
-                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder={isListening ? "Listening... speak now" : "Type your message..."}
+                  className={`flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    isListening ? 'border-green-400 bg-green-50' : 'border-gray-300'
+                  }`}
                   disabled={isLoading}
+                  readOnly={isListening}
                 />
                 <button
                   type="button"
