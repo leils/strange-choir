@@ -41,7 +41,7 @@ export default function Home() {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize Speech Recognition
+  // Initialize Speech Recognition once on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -57,11 +57,13 @@ export default function Home() {
         };
 
         recognition.onresult = (event: any) => {
+          console.log('Speech result received:', event.results);
           let interimTranscript = '';
           let finalTranscript = '';
 
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const transcript = event.results[i][0].transcript;
+            console.log(`Result ${i}: ${transcript}, isFinal: ${event.results[i].isFinal}`);
             if (event.results[i].isFinal) {
               finalTranscript += transcript + ' ';
             } else {
@@ -71,16 +73,19 @@ export default function Home() {
 
           // Show live transcription in input box
           if (interimTranscript) {
+            console.log('Setting interim transcript:', interimTranscript);
             setInput(interimTranscript);
           }
 
           // When we get a final result (after silence), auto-submit
-          if (finalTranscript && continuousListening) {
+          if (finalTranscript) {
             const fullText = finalTranscript.trim();
+            console.log('Final transcript received:', fullText);
             if (fullText) {
               setInput(fullText);
               // Auto-submit after a brief delay
               setTimeout(() => {
+                console.log('Auto-submitting message:', fullText);
                 submitMessage(fullText);
               }, 500);
             }
@@ -89,64 +94,66 @@ export default function Home() {
 
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error);
-          if (event.error === 'no-speech') {
-            // Restart if no speech detected
-            if (continuousListening && !isSpeaking) {
-              setTimeout(() => {
-                try {
-                  recognition.start();
-                } catch (e) {
-                  console.log('Recognition already started');
-                }
-              }, 100);
-            }
-          }
+          setIsListening(false);
         };
 
         recognition.onend = () => {
           console.log('Speech recognition ended');
           setIsListening(false);
-          // Auto-restart if in continuous mode and not speaking
-          if (continuousListening && !isSpeaking) {
-            setTimeout(() => {
-              try {
-                recognition.start();
-              } catch (e) {
-                console.log('Recognition already started');
-              }
-            }, 100);
-          }
         };
 
         recognitionRef.current = recognition;
+        console.log('Speech recognition initialized');
       } else {
         console.error('Speech Recognition not supported in this browser');
+        alert('Speech Recognition is not supported in this browser. Please use Chrome or Edge.');
       }
     }
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.log('Error stopping recognition on cleanup');
+        }
       }
     };
-  }, [continuousListening, isSpeaking]);
+  }, []);
 
   const startSpeechRecognition = () => {
     if (recognitionRef.current && !isListening) {
       try {
+        console.log('Starting speech recognition...');
         recognitionRef.current.start();
       } catch (e) {
-        console.log('Recognition already started');
+        console.log('Recognition already started or error:', e);
       }
     }
   };
 
   const stopSpeechRecognition = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+    if (recognitionRef.current) {
+      try {
+        console.log('Stopping speech recognition...');
+        recognitionRef.current.stop();
+        setIsListening(false);
+      } catch (e) {
+        console.log('Error stopping recognition:', e);
+      }
     }
   };
+
+  // Handle continuous listening restart after speech ends or AI finishes speaking
+  useEffect(() => {
+    if (continuousListening && !isSpeaking && !isListening && !isLoading) {
+      console.log('Restarting speech recognition for continuous mode');
+      const timer = setTimeout(() => {
+        startSpeechRecognition();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [continuousListening, isSpeaking, isListening, isLoading]);
 
   const startRecording = async () => {
     try {
@@ -422,12 +429,21 @@ export default function Home() {
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <span className="text-sm text-gray-700">Continuous Listen</span>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const newValue = !continuousListening;
-                        setContinuousListening(newValue);
                         if (newValue) {
-                          startSpeechRecognition();
+                          // Request microphone permission
+                          try {
+                            await navigator.mediaDevices.getUserMedia({ audio: true });
+                            console.log('Microphone permission granted');
+                            setContinuousListening(true);
+                            startSpeechRecognition();
+                          } catch (error) {
+                            console.error('Microphone permission denied:', error);
+                            alert('Please allow microphone access to use speech recognition');
+                          }
                         } else {
+                          setContinuousListening(false);
                           stopSpeechRecognition();
                           setInput('');
                         }
