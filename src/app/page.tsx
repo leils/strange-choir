@@ -507,25 +507,28 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-100 to-blue-200">
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="bg-white rounded-xl shadow-xl overflow-hidden">
+    <div className="min-h-screen bg-white" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className="container mx-auto max-w-4xl px-3 py-8">
+        <div className="bg-white border-4 border-black">
           <div className="h-[700px] flex flex-col">
-            <div className="p-4 bg-blue-50 border-b border-blue-200">
+            <div className="p-3 bg-white border-b-4 border-black">
               <div className="flex justify-between items-center">
                 <div>
-                  <h1 className="text-2xl font-semibold text-gray-800">AI Poet Chat</h1>
-                  <p className="text-sm text-gray-600">Chat with Whomp, the French AI poet</p>
+                  <h1 className="text-3xl font-bold text-black" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+                    AI POET CHAT
+                  </h1>
+                  <p className="text-sm text-black mt-1" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+                    Chat with Whomp, the French AI poet
+                  </p>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <label className={`flex items-center space-x-2 ${isSpeaking ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                    <span className="text-sm text-gray-700">Continuous Listen</span>
+                    <span className="text-xs text-black font-mono uppercase tracking-wider">Continuous Listen</span>
                     <button
                       onClick={async () => {
-                        if (isSpeaking) return; // Don't allow toggle while speaking
+                        if (isSpeaking) return;
                         const newValue = !continuousListening;
                         if (newValue) {
-                          // Request microphone permission
                           try {
                             await navigator.mediaDevices.getUserMedia({ audio: true });
                             console.log('Microphone permission granted');
@@ -542,39 +545,35 @@ export default function Home() {
                         }
                       }}
                       disabled={isSpeaking}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        continuousListening ? 'bg-blue-500' : 'bg-gray-300'
-                      } ${isSpeaking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`border-2 border-black px-3 py-1 text-xs font-mono transition-colors ${
+                        continuousListening ? 'bg-black text-white' : 'bg-white text-black'
+                      } ${isSpeaking ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
                     >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          continuousListening ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
+                      {continuousListening ? 'ON' : 'OFF'}
                     </button>
                   </label>
                   {isListening && !isSpeaking && (
-                    <span className="text-xs text-green-600 flex items-center space-x-1">
-                      <Mic size={14} className="animate-pulse" />
-                      <span>Listening...</span>
+                    <span className="text-xs text-black flex items-center space-x-1 border border-black px-2 py-1 font-mono">
+                      <Mic size={12} className="animate-pulse" />
+                      <span>LISTENING</span>
                     </span>
                   )}
                   {isSpeaking && (
-                    <span className="text-xs text-red-600 flex items-center space-x-1 font-semibold">
-                      <Volume2 size={16} className="animate-pulse" />
-                      <span>AI Speaking...</span>
+                    <span className="text-xs text-white bg-black flex items-center space-x-1 border border-black px-2 py-1 font-mono">
+                      <Volume2 size={12} className="animate-pulse" />
+                      <span>SPEAKING</span>
                     </span>
                   )}
                   {continuousListening && !isListening && !isSpeaking && (
-                    <span className="text-xs text-gray-500 flex items-center space-x-1">
-                      <span>Paused</span>
+                    <span className="text-xs text-black border border-black px-2 py-1 font-mono">
+                      PAUSED
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            <div className="flex-1 overflow-y-auto p-3 space-y-4 bg-white">
               {messages.slice(1).map((message) => (
                 <div
                   key={message.id}
@@ -583,8 +582,8 @@ export default function Home() {
                   }`}
                 >
                   {message.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Bot size={20} className="text-blue-600" />
+                    <div className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center flex-shrink-0">
+                      <Bot size={18} className="text-black" />
                     </div>
                   )}
 
@@ -592,37 +591,41 @@ export default function Home() {
                     className={`flex flex-col max-w-[70%] ${
                       message.role === 'user' ? 'items-end' : 'items-start'
                     }`}
+                    style={{ fontFamily: '"Times New Roman", Times, serif' }}
                   >
                     <div
-                      className={`rounded-2xl p-4 ${
+                      className={`border-2 border-black p-3 ${
                         message.role === 'user'
-                          ? 'bg-blue-500 text-white' + (message.isFloating ? ' animate-bounce' : '')
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-black text-white'
+                          : 'bg-white text-black'
                       }`}
                     >
-                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
                     </div>
 
                     {message.role === 'assistant' && (
                       <button
                         onClick={() => speakText(message.content)}
-                        className="mt-2 text-gray-500 hover:text-gray-700 transition-colors"
+                        className="mt-1 text-black hover:opacity-60 transition-opacity border border-black px-2 py-1 bg-white text-xs font-mono"
                         aria-label="Text to speech"
                       >
-                        <Volume2 size={16} />
+                        <div className="flex items-center space-x-1">
+                          <Volume2 size={12} />
+                          <span>PLAY</span>
+                        </div>
                       </button>
                     )}
 
                     {message.timestamp && (
-                      <span className="text-xs text-gray-500 mt-1">
+                      <span className="text-xs text-black mt-1 font-mono">
                         {new Date(message.timestamp).toLocaleTimeString()}
                       </span>
                     )}
                   </div>
 
                   {message.role === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                      <User size={20} className="text-gray-600" />
+                    <div className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center flex-shrink-0">
+                      <User size={18} className="text-black" />
                     </div>
                   )}
                 </div>
@@ -630,14 +633,14 @@ export default function Home() {
 
               {isLoading && (
                 <div className="flex justify-start items-center space-x-2">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Bot size={20} className="text-blue-600" />
+                  <div className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center">
+                    <Bot size={18} className="text-black" />
                   </div>
-                  <div className="bg-gray-100 rounded-2xl p-4">
+                  <div className="bg-white border-2 border-black p-3">
                     <div className="flex space-x-2">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                   </div>
                 </div>
@@ -645,38 +648,39 @@ export default function Home() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-4 bg-white border-t border-gray-200">
+            <div className="p-3 bg-white border-t-4 border-black">
               <form onSubmit={handleSubmit} className="flex items-center space-x-2">
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={isListening ? "Listening... speak now" : "Type your message..."}
-                  className={`flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                    isListening ? 'border-green-400 bg-green-50' : 'border-gray-300'
+                  placeholder={isListening ? ">>> LISTENING... SPEAK NOW" : "Type your message..."}
+                  className={`flex-1 p-2 border-2 border-black focus:outline-none transition-all text-sm ${
+                    isListening ? 'bg-black text-white placeholder-white font-mono' : 'bg-white text-black'
                   }`}
+                  style={{ fontFamily: isListening ? 'monospace' : '"Times New Roman", Times, serif' }}
                   disabled={isLoading}
                   readOnly={isListening}
                 />
                 <button
                   type="button"
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={`p-3 rounded-lg transition-colors ${
+                  className={`p-2 border-2 border-black transition-colors ${
                     isRecording
-                      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      ? 'bg-black text-white animate-pulse'
+                      : 'bg-white text-black hover:opacity-60'
                   }`}
                   disabled={isLoading || continuousListening}
                   title={continuousListening ? 'Mic is auto-managed in continuous mode' : 'Push to talk'}
                 >
-                  {isRecording ? <Square size={20} /> : <Mic size={20} />}
+                  {isRecording ? <Square size={18} /> : <Mic size={18} />}
                 </button>
                 <button
                   type="submit"
-                  className="p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="p-2 bg-black text-white border-2 border-black hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!input.trim() || isLoading}
                 >
-                  <Send size={20} />
+                  <Send size={18} />
                 </button>
               </form>
             </div>
