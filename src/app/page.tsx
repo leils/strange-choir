@@ -32,6 +32,8 @@ export default function Home() {
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const continuousListeningRef = useRef(continuousListening);
+  const messagesRef = useRef(messages);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -40,6 +42,86 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    continuousListeningRef.current = continuousListening;
+  }, [continuousListening]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Handle auto-submit from speech recognition with fresh state
+  const handleAutoSubmit = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+
+    console.log('handleAutoSubmit called with:', text);
+    console.log('Current continuous listening:', continuousListeningRef.current);
+
+    const userMessage: Message = {
+      role: 'user',
+      content: text.trim(),
+      timestamp: Date.now(),
+      id: `user-${Date.now()}`,
+      isFloating: true,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [...messagesRef.current, userMessage].map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response');
+      }
+
+      const assistantMessage = await response.json();
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: assistantMessage.content,
+          timestamp: Date.now(),
+          id: `assistant-${Date.now()}`,
+        },
+      ]);
+
+      // ALWAYS auto-speak when called from speech recognition
+      console.log('Auto-speaking response:', assistantMessage.content);
+      await speakText(assistantMessage.content);
+    } catch (error) {
+      console.error('Error getting completion:', error);
+      const errorMsg = 'Sorry, I encountered an error. Please try again.';
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: errorMsg,
+          timestamp: Date.now(),
+          id: `error-${Date.now()}`,
+        },
+      ]);
+      
+      await speakText(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Initialize Speech Recognition once on mount
   useEffect(() => {
@@ -81,12 +163,15 @@ export default function Home() {
           if (finalTranscript) {
             const fullText = finalTranscript.trim();
             console.log('Final transcript received:', fullText);
-            if (fullText) {
+            console.log('Continuous listening ref:', continuousListeningRef.current);
+            if (fullText && continuousListeningRef.current) {
               setInput(fullText);
+              // Stop listening while we process
+              recognition.stop();
               // Auto-submit after a brief delay
               setTimeout(() => {
                 console.log('Auto-submitting message:', fullText);
-                submitMessage(fullText);
+                handleAutoSubmit(fullText);
               }, 500);
             }
           }
@@ -313,7 +398,7 @@ export default function Home() {
         console.error('Error playing audio:', e);
         setIsSpeaking(false);
         // Resume speech recognition if in continuous mode
-        if (continuousListening) {
+        if (continuousListeningRef.current) {
           console.log('Resuming speech recognition after audio error');
           setTimeout(() => startSpeechRecognition(), 100);
         }
@@ -323,7 +408,7 @@ export default function Home() {
         console.log('Audio playback ended');
         setIsSpeaking(false);
         // Resume speech recognition after AI finishes speaking
-        if (continuousListening) {
+        if (continuousListeningRef.current) {
           console.log('Resuming speech recognition after audio ended');
           setTimeout(() => startSpeechRecognition(), 500);
         }
@@ -336,7 +421,7 @@ export default function Home() {
       console.error('Error generating speech:', error);
       setIsSpeaking(false);
       // Resume speech recognition if in continuous mode even on error
-      if (continuousListening) {
+      if (continuousListeningRef.current) {
         setTimeout(() => startSpeechRecognition(), 100);
       }
       alert(error.message || 'Failed to generate speech');
