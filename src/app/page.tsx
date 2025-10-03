@@ -314,19 +314,24 @@ export default function Home() {
         setIsSpeaking(false);
         // Resume speech recognition if in continuous mode
         if (continuousListening) {
+          console.log('Resuming speech recognition after audio error');
           setTimeout(() => startSpeechRecognition(), 100);
         }
       };
 
       audio.onended = () => {
+        console.log('Audio playback ended');
         setIsSpeaking(false);
         // Resume speech recognition after AI finishes speaking
         if (continuousListening) {
+          console.log('Resuming speech recognition after audio ended');
           setTimeout(() => startSpeechRecognition(), 500);
         }
       };
 
+      console.log('Starting audio playback...');
       await audio.play();
+      console.log('Audio playback started');
     } catch (error: any) {
       console.error('Error generating speech:', error);
       setIsSpeaking(false);
@@ -384,7 +389,9 @@ export default function Home() {
       ]);
 
       // Auto-speak the response in continuous listening mode
+      console.log('Continuous listening:', continuousListening, 'Content:', assistantMessage.content);
       if (continuousListening) {
+        console.log('Auto-speaking the response...');
         await speakText(assistantMessage.content);
       }
     } catch (error) {
@@ -426,10 +433,11 @@ export default function Home() {
                   <p className="text-sm text-gray-600">Chat with Whomp, the French AI poet</p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <label className="flex items-center space-x-2 cursor-pointer">
+                  <label className={`flex items-center space-x-2 ${isSpeaking ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     <span className="text-sm text-gray-700">Continuous Listen</span>
                     <button
                       onClick={async () => {
+                        if (isSpeaking) return; // Don't allow toggle while speaking
                         const newValue = !continuousListening;
                         if (newValue) {
                           // Request microphone permission
@@ -448,9 +456,10 @@ export default function Home() {
                           setInput('');
                         }
                       }}
+                      disabled={isSpeaking}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         continuousListening ? 'bg-blue-500' : 'bg-gray-300'
-                      }`}
+                      } ${isSpeaking ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -466,9 +475,14 @@ export default function Home() {
                     </span>
                   )}
                   {isSpeaking && (
-                    <span className="text-xs text-blue-600 flex items-center space-x-1">
-                      <Volume2 size={14} className="animate-pulse" />
-                      <span>Speaking...</span>
+                    <span className="text-xs text-red-600 flex items-center space-x-1 font-semibold">
+                      <Volume2 size={16} className="animate-pulse" />
+                      <span>AI Speaking...</span>
+                    </span>
+                  )}
+                  {continuousListening && !isListening && !isSpeaking && (
+                    <span className="text-xs text-gray-500 flex items-center space-x-1">
+                      <span>Paused</span>
                     </span>
                   )}
                 </div>
